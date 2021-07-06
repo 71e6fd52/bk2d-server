@@ -40,7 +40,8 @@ async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> 
         Some(line) => line?,
     };
     let (id_sender, id_receiver) = oneshot::channel();
-    game.send(NewPlayer(player, id_sender)).await?;
+    game.send(NewPlayer(player, response_sender.clone(), id_sender))
+        .await?;
     let player = id_receiver.await?;
 
     while let Some(line) = lines.next().await {

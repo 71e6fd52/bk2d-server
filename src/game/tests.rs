@@ -20,8 +20,9 @@ async fn test_setup() {
 async fn test_add_player() -> Result<()> {
     setup!(game_sender, game_handle);
     let (send, recv) = oneshot::channel();
+    let (response_sender, _response_receiver) = mpsc::unbounded();
     game_sender
-        .send(In::NewPlayer("yahvk".to_string(), send))
+        .send(In::NewPlayer("yahvk".to_string(), response_sender, send))
         .await?;
     let id = recv.await?;
     drop(game_sender);
@@ -41,9 +42,10 @@ async fn test_add_three_player() -> Result<()> {
 
     for name in ["aa", "bb", "cc"] {
         let (send, recv) = oneshot::channel();
+        let (response_sender, _response_receiver) = mpsc::unbounded();
 
         game_sender
-            .send(In::NewPlayer(name.to_string(), send))
+            .send(In::NewPlayer(name.to_string(), response_sender, send))
             .await?;
 
         ids.push(recv.await?);
@@ -62,5 +64,46 @@ async fn test_add_three_player() -> Result<()> {
             name
         );
     }
+    Ok(())
+}
+
+#[async_std::test]
+async fn test_create_room() -> Result<()> {
+    setup!(game_sender, game_handle);
+    let (response_sender, mut response_receiver) = mpsc::unbounded();
+    let (send, recv) = oneshot::channel();
+    game_sender
+        .send(In::NewPlayer("yahvk".to_string(), response_sender, send))
+        .await?;
+    let player = recv.await?;
+
+    game_sender
+        .send(In::PlayerAction {
+            player,
+            action: Action::Create {
+                name: "room".to_string(),
+            },
+        })
+        .await?;
+    let room = response_receiver.next().await;
+    let room = if let Response::RoomCreated(id) = room.unwrap() {
+        id
+    } else {
+        panic!("Can't get room id")
+    };
+
+    drop(game_sender);
+    let game = game_handle.await;
+    assert_eq!(
+        game.players
+            .get(&player)
+            .expect("player yahvk not exists")
+            .room,
+        Some(room)
+    );
+
+    let mut players = game.rooms.get(&room).expect("room not exists").iter();
+    assert_eq!(players.next(), Some(&player));
+    assert_eq!(players.next(), None);
     Ok(())
 }

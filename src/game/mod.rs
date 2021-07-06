@@ -10,6 +10,18 @@ use crate::utils::*;
 pub struct Player {
     name: String,
     room: Option<u64>,
+    sender: Sender<Response>,
+}
+
+impl Player {
+    pub async fn send(&mut self, res: Response) -> bool {
+        if let Err(e) = self.sender.send(res).await {
+            eprintln!("{}", e); // TODO: use log
+            false
+        } else {
+            true
+        }
+    }
 }
 
 pub struct Game {
@@ -34,25 +46,29 @@ impl Game {
         while let Some(action) = self.receiver.next().await {
             println!("{:?}", action);
             match action {
-                NewPlayer(name, sender) => {
-                    let id = self.insert_player(name);
-                    if let Err(id) = sender.send(id) {
+                NewPlayer(name, sender, id_sender) => {
+                    let id = self.insert_player(name, sender);
+                    if let Err(id) = id_sender.send(id) {
                         self.remove_player(id);
                     }
                 }
-                PlayerAction { player, action } => todo!(),
+                PlayerAction { player, action } => self.perform_action(player, action).await,
             };
         }
         self
     }
 
-    fn insert_player(&mut self, name: String) -> u64 {
+    fn insert_player(&mut self, name: String, sender: Sender<Response>) -> u64 {
         loop {
             let id = self.id_rng.next_u64();
             match self.players.entry(id) {
                 Entry::Occupied(_) => continue,
                 Entry::Vacant(entry) => {
-                    entry.insert(Player { name, room: None });
+                    entry.insert(Player {
+                        name,
+                        room: None,
+                        sender,
+                    });
                     return id;
                 }
             }
@@ -66,9 +82,39 @@ impl Game {
         };
         if let Some(room) = entry.room {
             self.rooms.entry(room).and_modify(|r| {
-                r.remove(&id);
+                r.remove(&id); // TODO: remove empty room
             });
         }
         true
+    }
+
+    fn insert_room(&mut self, _name: String) -> u64 {
+        loop {
+            let id = self.id_rng.next_u64();
+            match self.rooms.entry(id) {
+                Entry::Occupied(_) => continue,
+                Entry::Vacant(entry) => {
+                    entry.insert(HashSet::new());
+                    return id;
+                }
+            }
+        }
+    }
+
+    async fn perform_action(&mut self, player_id: u64, action: Action) {
+        if self.players.get(&player_id).is_none() {
+            return;
+        }
+        match action {
+            Action::Create { name } => {
+                let id = self.insert_room(name);
+                self.rooms.get_mut(&id).unwrap().insert(player_id);
+                let player = self.players.get_mut(&player_id).unwrap();
+                player.room = Some(id);
+                if !player.send(Response::RoomCreated(id)).await {
+                    self.remove_player(player_id);
+                }
+            }
+        }
     }
 }

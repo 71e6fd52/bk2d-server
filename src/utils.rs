@@ -22,7 +22,7 @@ where
 
 #[derive(Debug)]
 pub enum In {
-    NewPlayer(String, oneshot::Sender<u64>),
+    NewPlayer(String, Sender<Response>, oneshot::Sender<u64>),
     PlayerAction { player: u64, action: Action },
 }
 
@@ -36,4 +36,5 @@ pub enum Action {
 #[serde(rename_all = "kebab-case")]
 pub enum Response {
     Error(String),
+    RoomCreated(u64),
 }
