@@ -1,6 +1,6 @@
 pub use anyhow::Result;
 pub use async_std::{prelude::*, task};
-pub use futures::channel::mpsc;
+pub use futures::channel::{mpsc, oneshot};
 use serde::{Deserialize, Serialize};
 
 pub type Sender<T> = mpsc::UnboundedSender<T>;
@@ -17,10 +17,15 @@ where
     })
 }
 
+#[derive(Debug)]
+pub enum In {
+    NewPlayer(String, oneshot::Sender<u64>),
+    PlayerAction { player: u64, action: Action },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
-    Login(String),
     Create { name: String },
 }
 

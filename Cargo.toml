@@ -11,6 +11,7 @@ futures = "0.3.4"
 anyhow = "1.0.40"
 serde-lexpr = "0.1.2"
 serde = { version="1.0", features=["derive"] }
+rand = { version="0.8.3", features=["small_rng"] }
 
 [dependencies.async-std]
 version = "1.9.0"

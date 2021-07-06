@@ -14,7 +14,7 @@ async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
 
     let (game_sender, game_receiver) = mpsc::unbounded();
-    let game = game::Game(game_receiver);
+    let game = game::Game::new(game_receiver);
     let _game_handle = task::spawn(game.main_loop());
 
     let mut incoming = listener.incoming();
@@ -26,7 +26,9 @@ async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     Ok(())
 }
 
-async fn connection_loop(mut game: Sender<Action>, stream: TcpStream) -> Result<()> {
+async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> {
+    use In::*;
+
     let stream = Arc::new(stream);
     let reader = BufReader::new(&*stream);
     let mut lines = reader.lines();
@@ -34,15 +36,24 @@ async fn connection_loop(mut game: Sender<Action>, stream: TcpStream) -> Result<
     let (mut response_sender, response_receiver) = mpsc::unbounded();
     spawn_and_log_error(connection_writer_loop(response_receiver, stream.clone()));
 
-    let name = match lines.next().await {
+    let player = match lines.next().await {
         None => bail!("peer disconnected immediately"),
         Some(line) => line?,
     };
+    let (id_sender, id_receiver) = oneshot::channel();
+    game.send(NewPlayer(player, id_sender)).await?;
+    let player = id_receiver.await?;
 
     while let Some(line) = lines.next().await {
         let line = line?;
         match serde_lexpr::from_str(&line) {
-            Ok(data) => game.send(data).await?,
+            Ok(data) => {
+                game.send(PlayerAction {
+                    player,
+                    action: data,
+                })
+                .await?
+            }
             Err(err) => {
                 response_sender
                     .send(Response::Error(err.to_string()))
