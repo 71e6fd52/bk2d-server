@@ -23,3 +23,9 @@ pub enum Action {
     Login(String),
     Create { name: String },
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Response {
+    Error(String),
+}

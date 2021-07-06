@@ -1,3 +1,4 @@
+use anyhow::bail;
 use async_std::{
     io::BufReader,
     net::{TcpListener, TcpStream, ToSocketAddrs},
@@ -13,7 +14,7 @@ async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
 
     let (game_sender, game_receiver) = mpsc::unbounded();
-    let mut game = game::Game(game_receiver);
+    let game = game::Game(game_receiver);
     let _game_handle = task::spawn(game.main_loop());
 
     let mut incoming = listener.incoming();
@@ -30,32 +31,37 @@ async fn connection_loop(mut game: Sender<Action>, stream: TcpStream) -> Result<
     let reader = BufReader::new(&*stream);
     let mut lines = reader.lines();
 
-    // let name = match lines.next().await {
-    //     None => Err("peer disconnected immediately")?,
-    //     Some(line) => line?,
-    // };
-    // broker
-    //     .send(Event::NewPeer {
-    //         name: name.clone(),
-    //         stream: Arc::clone(&stream),
-    //     })
-    //     .await // 3
-    //     .unwrap();
+    let (mut response_sender, response_receiver) = mpsc::unbounded();
+    spawn_and_log_error(connection_writer_loop(response_receiver, stream.clone()));
+
+    let name = match lines.next().await {
+        None => bail!("peer disconnected immediately"),
+        Some(line) => line?,
+    };
 
     while let Some(line) = lines.next().await {
         let line = line?;
-        game.send(serde_lexpr::from_str(&line)?).await?;
+        match serde_lexpr::from_str(&line) {
+            Ok(data) => game.send(data).await?,
+            Err(err) => {
+                response_sender
+                    .send(Response::Error(err.to_string()))
+                    .await?
+            }
+        }
     }
     Ok(())
 }
 
 async fn connection_writer_loop(
-    mut messages: Receiver<String>,
+    mut messages: Receiver<Response>,
     stream: Arc<TcpStream>,
 ) -> Result<()> {
     let mut stream = &*stream;
     while let Some(msg) = messages.next().await {
-        stream.write_all(msg.as_bytes()).await?;
+        stream
+            .write_all((serde_lexpr::to_string(&msg)? + "\n").as_bytes())
+            .await?;
     }
     Ok(())
 }
