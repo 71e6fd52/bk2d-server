@@ -4,7 +4,6 @@ use async_std::{
     net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::Arc,
 };
-use futures::sink::SinkExt;
 
 mod game;
 mod utils;

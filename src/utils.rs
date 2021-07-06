@@ -1,6 +1,9 @@
 pub use anyhow::Result;
 pub use async_std::{prelude::*, task};
-pub use futures::channel::{mpsc, oneshot};
+pub use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt,
+};
 use serde::{Deserialize, Serialize};
 
 pub type Sender<T> = mpsc::UnboundedSender<T>;

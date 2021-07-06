@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use rand::prelude::*;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
@@ -26,7 +29,7 @@ impl Game {
         }
     }
 
-    pub async fn main_loop(mut self) {
+    pub async fn main_loop(mut self) -> Self {
         use In::*;
         while let Some(action) = self.receiver.next().await {
             println!("{:?}", action);
@@ -40,6 +43,7 @@ impl Game {
                 PlayerAction { player, action } => todo!(),
             };
         }
+        self
     }
 
     fn insert_player(&mut self, name: String) -> u64 {
