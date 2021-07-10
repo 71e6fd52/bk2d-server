@@ -9,6 +9,7 @@ mod game;
 mod utils;
 use utils::*;
 
+#[cfg(not(tarpaulin_include))]
 async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
 
@@ -25,6 +26,7 @@ async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(tarpaulin_include))]
 async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> {
     use In::*;
 
@@ -64,6 +66,7 @@ async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> 
     Ok(())
 }
 
+#[cfg(not(tarpaulin_include))]
 async fn connection_writer_loop(
     mut messages: Receiver<Response>,
     stream: Arc<TcpStream>,
@@ -77,6 +80,7 @@ async fn connection_writer_loop(
     Ok(())
 }
 
+#[cfg(not(tarpaulin_include))]
 #[async_std::main]
 async fn main() -> Result<()> {
     let fut = accept_loop("127.0.0.1:27933");
