@@ -11,9 +11,20 @@ macro_rules! setup {
     };
 }
 
+macro_rules! add_player {
+    ($sender:ident, $name:expr, $player:ident, $response_receiver:ident) => {
+        let (response_sender, mut $response_receiver) = mpsc::unbounded();
+        let (send, recv) = oneshot::channel();
+        $sender
+            .send(In::NewPlayer($name.to_string(), response_sender, send))
+            .await?;
+        let $player = recv.await?;
+    };
+}
+
 #[async_std::test]
 async fn test_setup() {
-    setup!(_game_sender);
+    setup!(_game_sender, _game_handle);
 }
 
 #[async_std::test]
@@ -70,17 +81,12 @@ async fn test_add_three_player() -> Result<()> {
 #[async_std::test]
 async fn test_create_room() -> Result<()> {
     setup!(game_sender, game_handle);
-    let (response_sender, mut response_receiver) = mpsc::unbounded();
-    let (send, recv) = oneshot::channel();
-    game_sender
-        .send(In::NewPlayer("yahvk".to_string(), response_sender, send))
-        .await?;
-    let player = recv.await?;
+    add_player!(game_sender, "yahvk", player, response_receiver);
 
     game_sender
         .send(In::PlayerAction {
             player,
-            action: Action::Create {
+            action: Action::CreateRoom {
                 name: "room".to_string(),
             },
         })
@@ -105,5 +111,63 @@ async fn test_create_room() -> Result<()> {
     let mut players = game.rooms.get(&room).expect("room not exists").iter();
     assert_eq!(players.next(), Some(&player));
     assert_eq!(players.next(), None);
+    Ok(())
+}
+
+#[async_std::test]
+async fn test_join_room() -> Result<()> {
+    setup!(game_sender, game_handle);
+    add_player!(game_sender, "yahvk", player, response_receiver);
+    add_player!(game_sender, "yahvk2", player2, response_receiver2);
+
+    game_sender
+        .send(In::PlayerAction {
+            player,
+            action: Action::CreateRoom {
+                name: "room".to_string(),
+            },
+        })
+        .await?;
+    let room = response_receiver.next().await;
+    let room = if let Response::RoomCreated(id) = room.unwrap() {
+        id
+    } else {
+        panic!("Can't get room id")
+    };
+
+    game_sender
+        .send(In::PlayerAction {
+            player: player2,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    let res = response_receiver2.next().await;
+    if let Response::RoomJoined = res.unwrap() {
+    } else {
+        panic!("Can't join room")
+    };
+
+    drop(game_sender);
+    let game = game_handle.await;
+    assert_eq!(
+        game.players
+            .get(&player)
+            .expect("player yahvk not exists")
+            .room,
+        Some(room)
+    );
+    assert_eq!(
+        game.players
+            .get(&player2)
+            .expect("player yahvk2 not exists")
+            .room,
+        Some(room)
+    );
+
+    let players = game.rooms.get(&room).expect("room not exists").to_owned();
+    let mut should = HashSet::new();
+    should.insert(player);
+    should.insert(player2);
+    assert_eq!(players, should);
     Ok(())
 }

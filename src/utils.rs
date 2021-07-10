@@ -29,7 +29,8 @@ pub enum In {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
-    Create { name: String },
+    CreateRoom { name: String },
+    JoinRoom { id: u64 },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -37,4 +38,5 @@ pub enum Action {
 pub enum Response {
     Error(String),
     RoomCreated(u64),
+    RoomJoined,
 }

@@ -106,12 +106,30 @@ impl Game {
             return;
         }
         match action {
-            Action::Create { name } => {
+            Action::CreateRoom { name } => {
                 let id = self.insert_room(name);
                 self.rooms.get_mut(&id).unwrap().insert(player_id);
                 let player = self.players.get_mut(&player_id).unwrap();
                 player.room = Some(id);
                 if !player.send(Response::RoomCreated(id)).await {
+                    self.remove_player(player_id);
+                }
+            }
+            Action::JoinRoom { id } => {
+                let player = self.players.get_mut(&player_id).unwrap();
+                if let Some(room) = self.rooms.get_mut(&id) {
+                    room.insert(player_id);
+                } else {
+                    if !player
+                        .send(Response::Error("Room Not Found".to_string())) // TODO: Error type
+                        .await
+                    {
+                        self.remove_player(player_id);
+                    }
+                    return;
+                }
+                player.room = Some(id);
+                if !player.send(Response::RoomJoined).await {
                     self.remove_player(player_id);
                 }
             }
