@@ -5,8 +5,8 @@ use async_std::{
     sync::Arc,
 };
 
-mod game;
-mod utils;
+pub mod game;
+pub mod utils;
 use utils::*;
 
 #[cfg(not(tarpaulin_include))]

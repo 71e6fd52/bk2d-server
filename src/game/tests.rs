@@ -1,4 +1,5 @@
 use super::*;
+use enum_macro::em;
 
 macro_rules! setup {
     ($sender:ident, $handle:ident) => {
@@ -11,12 +12,12 @@ macro_rules! setup {
     };
 }
 
-macro_rules! add_player {
+macro_rules! new_player {
     ($sender:ident, $name:expr, $player:ident, $response_receiver:ident) => {
         let (response_sender, mut $response_receiver) = mpsc::unbounded();
         let (send, recv) = oneshot::channel();
         $sender
-            .send(In::NewPlayer($name.to_string(), response_sender, send))
+            .send(In::NewPlayer($name, response_sender, send))
             .await?;
         let $player = recv.await?;
     };
@@ -81,7 +82,7 @@ async fn test_add_three_player() -> Result<()> {
 #[async_std::test]
 async fn test_create_room() -> Result<()> {
     setup!(game_sender, game_handle);
-    add_player!(game_sender, "yahvk", player, response_receiver);
+    new_player!(game_sender, "yahvk".to_string(), player, response_receiver);
 
     game_sender
         .send(In::PlayerAction {
@@ -92,11 +93,7 @@ async fn test_create_room() -> Result<()> {
         })
         .await?;
     let room = response_receiver.next().await;
-    let room = if let Response::RoomCreated(id) = room.unwrap() {
-        id
-    } else {
-        panic!("Can't get room id")
-    };
+    let room = em!(room.unwrap() => get Response::RoomCreated).expect("Can't get room id");
 
     drop(game_sender);
     let game = game_handle.await;
@@ -117,8 +114,13 @@ async fn test_create_room() -> Result<()> {
 #[async_std::test]
 async fn test_join_room() -> Result<()> {
     setup!(game_sender, game_handle);
-    add_player!(game_sender, "yahvk", player, response_receiver);
-    add_player!(game_sender, "yahvk2", player2, response_receiver2);
+    new_player!(game_sender, "yahvk".to_string(), player, response_receiver);
+    new_player!(
+        game_sender,
+        "yahvk2".to_string(),
+        player2,
+        response_receiver2
+    );
 
     game_sender
         .send(In::PlayerAction {
@@ -129,11 +131,7 @@ async fn test_join_room() -> Result<()> {
         })
         .await?;
     let room = response_receiver.next().await;
-    let room = if let Response::RoomCreated(id) = room.unwrap() {
-        id
-    } else {
-        panic!("Can't get room id")
-    };
+    let room = em!(room.unwrap() => get Response::RoomCreated).expect("Can't get room id");
 
     game_sender
         .send(In::PlayerAction {
@@ -142,8 +140,7 @@ async fn test_join_room() -> Result<()> {
         })
         .await?;
     let res = response_receiver2.next().await;
-    if let Response::RoomJoined = res.unwrap() {
-    } else {
+    if !em!(res.unwrap() => is Response::RoomJoined|) {
         panic!("Can't join room")
     };
 
