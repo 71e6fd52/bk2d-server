@@ -31,6 +31,17 @@ pub enum In {
 pub enum Action {
     CreateRoom { name: String },
     JoinRoom { id: u64 },
+    Ready(u8, u8),
+    Game(GameAction),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameAction {
+    Move(u8, u8),
+    Attack(u8, u8),
+    Run(u8, u8),
+    End,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,4 +50,5 @@ pub enum Response {
     Error(String),
     RoomCreated(u64),
     RoomJoined,
+    GameStarted,
 }
