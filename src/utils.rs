@@ -23,7 +23,12 @@ where
 #[derive(Debug)]
 pub enum In {
     NewPlayer(String, Sender<Response>, oneshot::Sender<u64>),
-    PlayerAction { player: u64, action: Action },
+    PlayerAction {
+        player: u64,
+        action: Action,
+    },
+    #[cfg(test)]
+    Export(oneshot::Sender<crate::game::GameExport>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

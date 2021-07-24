@@ -1,3 +1,5 @@
+#![allow(clippy::bool_assert_comparison)]
+
 use super::*;
 use enum_macro::em;
 
@@ -21,6 +23,14 @@ macro_rules! new_player {
             .await?;
         let $player = recv.await?;
     };
+}
+
+macro_rules! export {
+    ($sender:ident) => {{
+        let (sender, receiver) = oneshot::channel();
+        $sender.send(In::Export(sender)).await?;
+        receiver.await?
+    }};
 }
 
 #[async_std::test]
@@ -71,7 +81,7 @@ async fn test_add_three_player() -> Result<()> {
             &game
                 .players
                 .get(&ids[i])
-                .expect(&format!("player {} not exists", name))
+                .unwrap_or_else(|| panic!("player {} not exists", name))
                 .name,
             name
         );
@@ -180,64 +190,6 @@ async fn test_join_room() -> Result<()> {
 }
 
 #[async_std::test]
-async fn test_not_start_game() -> Result<()> {
-    setup!(game_sender, game_handle);
-    new_player!(game_sender, "yahvk".to_string(), player, response_receiver);
-    new_player!(game_sender, "yahv".to_string(), player2, response_receiver2);
-
-    game_sender
-        .send(In::PlayerAction {
-            player,
-            action: Action::CreateRoom {
-                name: "room".to_string(),
-            },
-        })
-        .await?;
-    let room = response_receiver.next().await;
-    let room = em!(room.unwrap() => get Response::RoomCreated).expect("Can't get room id");
-
-    game_sender
-        .send(In::PlayerAction {
-            player: player2,
-            action: Action::JoinRoom { id: room },
-        })
-        .await?;
-    let res = response_receiver2.next().await;
-    if !em!(res.unwrap() => is Response::RoomJoined|) {
-        panic!("Can't join room")
-    };
-
-    game_sender
-        .send(In::PlayerAction {
-            player: player2,
-            action: Action::Ready(1, 1),
-        })
-        .await?;
-
-    drop(game_sender);
-    let game = game_handle.await;
-
-    let p1 = game.players.get(&player).unwrap();
-    let p2 = game.players.get(&player2).unwrap();
-
-    assert_eq!(p1.ready, false);
-    assert_eq!(p2.ready, true);
-    assert!(p1.ingame.is_none());
-    assert_eq!(
-        p2.ingame
-            .as_ref()
-            .expect("player2 not have ingame")
-            .position,
-        (1, 1)
-    );
-
-    let room = game.rooms.get(&room).expect("room not exists");
-
-    assert_eq!(room.is_gamming(), false);
-    Ok(())
-}
-
-#[async_std::test]
 async fn test_start_game() -> Result<()> {
     setup!(game_sender, game_handle);
     new_player!(game_sender, "yahvk".to_string(), player, response_receiver);
@@ -267,10 +219,33 @@ async fn test_start_game() -> Result<()> {
 
     game_sender
         .send(In::PlayerAction {
-            player: player,
+            player,
             action: Action::Ready(1, 2),
         })
         .await?;
+
+    {
+        let data = export!(game_sender);
+
+        let p1 = data.players.get(&player).unwrap();
+        let p2 = data.players.get(&player2).unwrap();
+
+        assert_eq!(p1.ready, true);
+        assert_eq!(p2.ready, false);
+        assert_eq!(
+            p1.ingame
+                .as_ref()
+                .expect("player not have ingame")
+                .position,
+            (1, 2)
+        );
+        assert!(p2.ingame.is_none());
+
+        let room = data.rooms.get(&room).expect("room not exists");
+
+        assert!(room.order.is_empty());
+    }
+
     game_sender
         .send(In::PlayerAction {
             player: player2,

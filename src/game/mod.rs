@@ -8,12 +8,12 @@ use crate::utils::*;
 
 #[derive(Debug)]
 pub struct Player {
-    id: u64,
-    name: String,
-    room: Option<u64>,
+    pub id: u64,
+    pub name: String,
+    pub room: Option<u64>,
     sender: Sender<Response>,
-    ingame: Option<IngameProp>,
-    ready: bool,
+    pub ingame: Option<IngameProp>,
+    pub ready: bool,
 }
 
 impl Player {
@@ -25,17 +25,45 @@ impl Player {
             true
         }
     }
+
+    #[cfg(test)]
+    pub fn export(&self) -> PlayerExport {
+        PlayerExport {
+            id: self.id,
+            name: self.name.clone(),
+            room: self.room,
+            ingame: self.ingame.clone(),
+            ready: self.ready,
+        }
+    }
 }
 
-#[derive(Debug)]
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerExport {
+    pub id: u64,
+    pub name: String,
+    pub room: Option<u64>,
+    pub ingame: Option<IngameProp>,
+    pub ready: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IngameProp {
-    position: (u8, u8),
+    pub position: (u8, u8),
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomExport {
+    pub order: VecDeque<u64>,
+    pub players: HashSet<u64>,
 }
 
 #[derive(Debug)]
 pub struct Room {
-    order: VecDeque<u64>,
-    players: HashSet<u64>,
+    pub order: VecDeque<u64>,
+    pub players: HashSet<u64>,
     rng: SmallRng,
 }
 
@@ -64,6 +92,14 @@ impl Room {
         self.order = self.players.iter().map(|x| x.to_owned()).collect();
         self.order.make_contiguous().shuffle(&mut self.rng);
     }
+
+    #[cfg(test)]
+    pub fn export(&self) -> RoomExport {
+        RoomExport {
+            order: self.order.clone(),
+            players: self.players.clone(),
+        }
+    }
 }
 
 impl Default for Room {
@@ -72,10 +108,17 @@ impl Default for Room {
     }
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameExport {
+    pub players: HashMap<u64, PlayerExport>,
+    pub rooms: HashMap<u64, RoomExport>,
+}
+
 pub struct Game {
     receiver: Receiver<In>,
-    players: HashMap<u64, Player>,
-    rooms: HashMap<u64, Room>,
+    pub players: HashMap<u64, Player>,
+    pub rooms: HashMap<u64, Room>,
     id_rng: SmallRng,
 }
 
@@ -101,6 +144,10 @@ impl Game {
                     }
                 }
                 PlayerAction { player, action } => self.perform_action(player, action).await,
+                #[cfg(test)]
+                Export(sender) => {
+                    sender.send(self.export()).ok();
+                }
             };
         }
         self
@@ -234,5 +281,12 @@ impl Game {
                 todo!()
             }
         }
+    }
+
+    #[cfg(test)]
+    fn export(&self) -> GameExport {
+        let players = self.players.iter().map(|(&k, v)| (k, v.export())).collect();
+        let rooms = self.rooms.iter().map(|(&k, v)| (k, v.export())).collect();
+        GameExport { players, rooms }
     }
 }
