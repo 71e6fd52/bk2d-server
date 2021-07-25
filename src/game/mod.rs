@@ -231,7 +231,6 @@ impl Game {
             return;
         }
         use Action::*;
-        use Response::*;
         match action {
             CreateRoom { name } => {
                 let id = self.insert_room(name);
@@ -248,7 +247,7 @@ impl Game {
                     room.players.insert(player_id);
                 } else {
                     if !player
-                        .send(Response::Error("Room Not Found".to_string())) // TODO: Error type
+                        .send(Response::Error(Error::RoomNotFound))
                         .await
                     {
                         self.remove_player(player_id);
@@ -265,10 +264,7 @@ impl Game {
                 let room = if let Some(id) = player.room {
                     id
                 } else {
-                    if !player
-                        .send(Error("You need join room first".to_string())) // TODO: Error
-                        .await
-                    {
+                    if !player.send(Response::Error(Error::NotJoinRoom)).await {
                         self.remove_player(player_id);
                     }
                     return;

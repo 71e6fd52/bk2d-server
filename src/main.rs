@@ -58,7 +58,7 @@ async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> 
             }
             Err(err) => {
                 response_sender
-                    .send(Response::Error(err.to_string()))
+                    .send(Response::Error(Error::Other(err.to_string())))
                     .await?
             }
         }

@@ -5,6 +5,7 @@ pub use futures::{
     SinkExt,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 pub type Sender<T> = mpsc::UnboundedSender<T>;
 pub type Receiver<T> = mpsc::UnboundedReceiver<T>;
@@ -49,11 +50,26 @@ pub enum GameAction {
     End,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Response {
-    Error(String),
+    Error(Error),
     RoomCreated(u64),
     RoomJoined,
     GameStarted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "error_id", content = "error_detail")]
+#[serde(rename_all = "snake_case")]
+pub enum Error {
+    RoomNotFound,
+    NotJoinRoom,
+    Other(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.serialize(f)
+    }
 }
