@@ -21,6 +21,16 @@ where
     })
 }
 
+pub trait Distance {
+    fn distance(&self, other: &Self) -> usize;
+}
+
+impl Distance for (u8, u8) {
+    fn distance(&self, other: &Self) -> usize {
+        (self.0.abs_diff(other.0) + self.1.abs_diff(other.1)).into()
+    }
+}
+
 #[derive(Debug)]
 pub enum In {
     NewPlayer(String, Sender<Response>, oneshot::Sender<u64>),
@@ -57,6 +67,16 @@ pub enum Response {
     RoomCreated(u64),
     RoomJoined,
     GameStarted,
+    Game(Event),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Event {
+    TurnStart,
+    Attack(u8, u8),
+    Run(u8, u8),
+    Disconnected(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -65,6 +85,9 @@ pub enum Response {
 pub enum Error {
     RoomNotFound,
     NotJoinRoom,
+    NotYourTurn,
+    ActionOrderIncorrect,
+    IllegalParameter,
     Other(String),
 }
 

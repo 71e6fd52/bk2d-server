@@ -26,6 +26,14 @@ impl Player {
         }
     }
 
+    pub fn ingame(&self) -> &IngameProp {
+        self.ingame.as_ref().unwrap()
+    }
+
+    pub fn ingame_mut(&mut self) -> &mut IngameProp {
+        self.ingame.as_mut().unwrap()
+    }
+
     #[cfg(test)]
     pub fn export(&self) -> PlayerExport {
         PlayerExport {
@@ -51,6 +59,8 @@ pub struct PlayerExport {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IngameProp {
     pub position: (u8, u8),
+    pub stage: u8,
+    pub alive: bool,
 }
 
 #[cfg(test)]
@@ -82,7 +92,7 @@ impl Room {
 
     pub fn winner(&self) -> Option<u64> {
         if self.order.len() == 1 && self.players.len() > 1 {
-            Some(self.order[0])
+            Some(*self.order.front().unwrap())
         } else {
             None
         }
@@ -91,6 +101,26 @@ impl Room {
     pub fn start(&mut self) {
         self.order = self.players.iter().map(|x| x.to_owned()).collect();
         self.order.make_contiguous().shuffle(&mut self.rng);
+    }
+
+    pub fn currect_player_id(&self) -> u64 {
+        *self.order.front().unwrap()
+    }
+
+    pub fn push_player(&mut self) -> u64 {
+        self.order.rotate_left(1);
+
+        self.currect_player_id()
+    }
+
+    pub async fn boardcast(&mut self, res: Response, players: &mut HashMap<u64, Player>) {
+        for player_id in &self.players {
+            players.get_mut(player_id).unwrap().send(res.clone()).await;
+        }
+    }
+
+    pub fn kill_player(&mut self, player_id: u64) {
+        panic!("try kill player {}", player_id)
     }
 
     #[cfg(test)]
@@ -120,6 +150,15 @@ pub struct Game {
     pub players: HashMap<u64, Player>,
     pub rooms: HashMap<u64, Room>,
     id_rng: SmallRng,
+}
+
+macro_rules! send_or_delete {
+    ($s:ident, $player:expr, $res:expr) => {
+        if !$player.send($res).await {
+            let id = $player.id;
+            $s.remove_player(id);
+        }
+    };
 }
 
 impl Game {
@@ -181,7 +220,9 @@ impl Game {
         if let Some(room) = entry.room {
             self.rooms.entry(room).and_modify(|r| {
                 r.players.remove(&id); // TODO: remove empty room
+                                       // TODO: remove in order
             });
+            // TODO: notify other player
         }
         true
     }
@@ -223,7 +264,13 @@ impl Game {
         for i in to_delete {
             self.remove_player(i);
         }
-        self.rooms.get_mut(&room_id).unwrap().start();
+        let room = self.rooms.get_mut(&room_id).unwrap();
+        room.start();
+        send_or_delete!(
+            self,
+            self.players.get_mut(room.order.front().unwrap()).unwrap(),
+            Response::Game(Event::TurnStart)
+        );
     }
 
     async fn perform_action(&mut self, player_id: u64, action: Action) {
@@ -246,12 +293,7 @@ impl Game {
                 if let Some(room) = self.rooms.get_mut(&id) {
                     room.players.insert(player_id);
                 } else {
-                    if !player
-                        .send(Response::Error(Error::RoomNotFound))
-                        .await
-                    {
-                        self.remove_player(player_id);
-                    }
+                    send_or_delete!(self, player, Response::Error(Error::RoomNotFound));
                     return;
                 }
                 player.room = Some(id);
@@ -264,18 +306,92 @@ impl Game {
                 let room = if let Some(id) = player.room {
                     id
                 } else {
-                    if !player.send(Response::Error(Error::NotJoinRoom)).await {
-                        self.remove_player(player_id);
-                    }
+                    send_or_delete!(self, player, Response::Error(Error::NotJoinRoom));
                     return;
                 };
-                player.ingame = Some(IngameProp { position: (x, y) });
+                player.ingame = Some(IngameProp {
+                    position: (x, y),
+                    stage: 0,
+                    alive: true,
+                });
                 player.ready = true;
                 self.try_start(room).await;
             }
-            Game(game) => {
-                todo!()
+            Game(game) => self.perform_game_action(player_id, game).await,
+        }
+    }
+
+    async fn perform_game_action(&mut self, player_id: u64, action: GameAction) {
+        // TODO: make sure game started
+        let player = self.players.get_mut(&player_id).unwrap();
+        let room = if let Some(id) = player.room {
+            if let Some(room) = self.rooms.get_mut(&id) {
+                room
+            } else {
+                send_or_delete!(self, player, Response::Error(Error::RoomNotFound));
+                return;
             }
+        } else {
+            if !player.send(Response::Error(Error::NotJoinRoom)).await {
+                self.remove_player(player_id);
+            }
+            return;
+        };
+        if room.currect_player_id() != player_id {
+            send_or_delete!(self, player, Response::Error(Error::NotYourTurn));
+            return;
+        }
+        use GameAction::*;
+        match action {
+            Move(x, y) => {
+                if player.ingame().stage > 0 {
+                    send_or_delete!(self, player, Response::Error(Error::ActionOrderIncorrect));
+                    return;
+                }
+                if (x, y).distance(&player.ingame().position) > 1 {
+                    send_or_delete!(self, player, Response::Error(Error::IllegalParameter));
+                    return;
+                }
+                player.ingame_mut().position = (x, y);
+                player.ingame_mut().stage = 1;
+            }
+            Attack(x, y) => {
+                if player.ingame().stage > 1 {
+                    send_or_delete!(self, player, Response::Error(Error::ActionOrderIncorrect));
+                    return;
+                }
+                if (x, y).distance(&player.ingame.as_ref().unwrap().position) != 1 {
+                    send_or_delete!(self, player, Response::Error(Error::IllegalParameter));
+                    return;
+                }
+                player.ingame_mut().stage = 2;
+                room.boardcast(Response::Game(Event::Attack(x, y)), &mut self.players)
+                    .await;
+                let mut to_kill = vec![];
+                for pl in &room.order {
+                    let player = self.players.get_mut(pl).unwrap();
+                    if player.ingame.as_ref().unwrap().position == (x, y) {
+                        player.ingame.as_mut().unwrap().alive = false;
+                        to_kill.push(*pl);
+                    }
+                }
+                for pl in to_kill {
+                    room.kill_player(pl);
+                }
+            }
+            Run(x, y) => {
+                if player.ingame().stage > 0 {
+                    send_or_delete!(self, player, Response::Error(Error::ActionOrderIncorrect));
+                    return;
+                }
+                if (x, y).distance(&player.ingame().position) != 2 {
+                    send_or_delete!(self, player, Response::Error(Error::IllegalParameter));
+                    return;
+                }
+                player.ingame_mut().position = (x, y);
+                player.ingame_mut().stage = 1;
+            }
+            End => todo!(),
         }
     }
 
