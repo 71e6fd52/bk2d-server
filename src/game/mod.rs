@@ -360,7 +360,7 @@ impl Game {
                     send_or_delete!(self, player, Response::Error(Error::ActionOrderIncorrect));
                     return;
                 }
-                if (x, y).distance(&player.ingame.as_ref().unwrap().position) != 1 {
+                if (x, y).distance(&player.ingame().position) != 1 {
                     send_or_delete!(self, player, Response::Error(Error::IllegalParameter));
                     return;
                 }
@@ -370,8 +370,8 @@ impl Game {
                 let mut to_kill = vec![];
                 for pl in &room.order {
                     let player = self.players.get_mut(pl).unwrap();
-                    if player.ingame.as_ref().unwrap().position == (x, y) {
-                        player.ingame.as_mut().unwrap().alive = false;
+                    if player.ingame().position == (x, y) {
+                        player.ingame_mut().alive = false;
                         to_kill.push(*pl);
                     }
                 }
