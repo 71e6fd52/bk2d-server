@@ -77,6 +77,7 @@ pub enum Event {
     Attack(u8, u8),
     Run(u8, u8),
     Disconnected(String),
+    GameEnded(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

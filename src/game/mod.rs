@@ -60,7 +60,6 @@ pub struct PlayerExport {
 pub struct IngameProp {
     pub position: (u8, u8),
     pub stage: u8,
-    pub alive: bool,
 }
 
 #[cfg(test)]
@@ -268,7 +267,7 @@ impl Game {
         room.start();
         send_or_delete!(
             self,
-            self.players.get_mut(room.order.front().unwrap()).unwrap(),
+            self.players.get_mut(&room.currect_player_id()).unwrap(),
             Response::Game(Event::TurnStart)
         );
     }
@@ -312,7 +311,6 @@ impl Game {
                 player.ingame = Some(IngameProp {
                     position: (x, y),
                     stage: 0,
-                    alive: true,
                 });
                 player.ready = true;
                 self.try_start(room).await;
@@ -371,7 +369,6 @@ impl Game {
                 for pl in &room.order {
                     let player = self.players.get_mut(pl).unwrap();
                     if player.ingame().position == (x, y) {
-                        player.ingame_mut().alive = false;
                         to_kill.push(*pl);
                     }
                 }
@@ -388,10 +385,20 @@ impl Game {
                     send_or_delete!(self, player, Response::Error(Error::IllegalParameter));
                     return;
                 }
+                let (oldx, oldy) = player.ingame().position;
                 player.ingame_mut().position = (x, y);
                 player.ingame_mut().stage = 1;
+                room.boardcast(Response::Game(Event::Run(oldx, oldy)), &mut self.players)
+                    .await;
             }
-            End => todo!(),
+            End => {
+                player.ingame_mut().stage = 0;
+                send_or_delete!(
+                    self,
+                    self.players.get_mut(&room.push_player()).unwrap(),
+                    Response::Game(Event::TurnStart)
+                );
+            }
         }
     }
 

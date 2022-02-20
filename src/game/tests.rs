@@ -4,6 +4,7 @@
 use super::*;
 use enum_macro::em;
 use futures::{select, FutureExt};
+use std::time::Duration;
 
 macro_rules! setup {
     ($sender:ident, $handle:ident) => {
@@ -39,9 +40,25 @@ macro_rules! export {
 
 macro_rules! receive {
     ($rec:ident) => {{
-        let a = $rec.next().await.unwrap();
+        let dur = Duration::from_secs(1);
+        let a = async_std::future::timeout(dur, $rec.next())
+            .await
+            .expect("Not receive anything")
+            .expect("receiver closed");
         println!("{} received {:?}", stringify!($rec), a);
         a
+    }};
+    (nothing in $rec:ident) => {{
+        let dur = Duration::from_secs(1);
+        let a = async_std::future::timeout(dur, $rec.next()).await;
+        if a.is_ok() {
+            let a = a.expect("receiver closed");
+            panic!(
+                "{} should receive nothing but received {:?}",
+                stringify!($rec),
+                a
+            )
+        }
     }};
 }
 
@@ -341,7 +358,7 @@ async fn start_game() -> Result<(
     game_sender
         .send(In::PlayerAction {
             player: pl2,
-            action: Action::Ready(1, 3),
+            action: Action::Ready(1, 1),
         })
         .await?;
 
@@ -381,7 +398,6 @@ async fn start_game() -> Result<(
 }
 
 #[async_std::test]
-#[ignore]
 async fn test_a_full_game() -> Result<()> {
     setup!(game_sender, game_handle);
     new_player!(game_sender, "pl_a".to_string(), pl1, rec1);
@@ -419,7 +435,7 @@ async fn test_a_full_game() -> Result<()> {
     game_sender
         .send(In::PlayerAction {
             player: pl2,
-            action: Action::Ready(1, 3),
+            action: Action::Ready(1, 1),
         })
         .await?;
 
@@ -481,13 +497,75 @@ async fn test_a_full_game() -> Result<()> {
         em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::TurnStart|),
         "pl2 turn not start"
     );
-    // TODO: test run
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::Game(GameAction::Run(2, 2)),
+        })
+        .await?;
+    assert_eq!(
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => get Event::Run[x, y])
+        .expect("No Run boardcast"),
+        (1, 1),
+        "Run location wrong"
+    );
+    assert_eq!(
+        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => get Event::Run[x, y])
+        .expect("No Run boardcast"),
+        (1, 1),
+        "Run location wrong"
+    );
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::Game(GameAction::End),
+        })
+        .await?;
+    assert!(
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::TurnStart|),
+        "pl1 turn not start"
+    );
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Game(GameAction::Move(1, 2)),
+        })
+        .await?;
+    receive!(nothing in rec1);
+    receive!(nothing in rec2);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Game(GameAction::Attack(2, 2)),
+        })
+        .await?;
+    assert_eq!(
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        .expect("No Attack boardcast"),
+        (2, 2),
+        "Attack location wrong"
+    );
+    assert_eq!(
+        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        .expect("No Attack boardcast"),
+        (2, 2),
+        "Attack location wrong"
+    );
+    assert!(
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::GameEnded),
+        "Game not ended"
+    );
+    assert!(
+        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::GameEnded),
+        "Game not ended"
+    );
 
     Ok(())
 }
 
 #[async_std::test]
-#[ignore]
 async fn test_illegal_action() -> Result<()> {
     let (mut game_sender, game_handle, ((pl1, mut rec1), (pl2, mut rec2))) = start_game().await?;
     game_sender
@@ -557,11 +635,11 @@ async fn test_illegal_action() -> Result<()> {
             action: Action::Game(GameAction::Move(1, 2)),
         })
         .await?;
-    assert!(rec2.next().await.is_none());
+    receive!(nothing in rec2);
 
     game_sender
         .send(In::PlayerAction {
-            player: pl1,
+            player: pl2,
             action: Action::Game(GameAction::Attack(2, 2)),
         })
         .await?;
