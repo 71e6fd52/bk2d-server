@@ -554,12 +554,20 @@ async fn test_a_full_game() -> Result<()> {
         "Attack location wrong"
     );
     assert!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::GameEnded),
-        "Game not ended"
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::GameEnded),
-        "Game not ended"
+        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert!(
+        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::GameEnd),
+        "Game didn't ended"
+    );
+    assert!(
+        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::GameEnd),
+        "Game didn't ended"
     );
 
     Ok(())
@@ -645,6 +653,302 @@ async fn test_illegal_action() -> Result<()> {
         .await?;
     assert!(em!(receive!(rec2) => get Response::Error).is_none());
     // TODO: test run
+
+    Ok(())
+}
+
+#[async_std::test]
+async fn test_once_kill_all() -> Result<()> {
+    setup!(game_sender, game_handle);
+    new_player!(game_sender, "pl_a".to_string(), pl1, rec1);
+    new_player!(game_sender, "pl_b".to_string(), pl2, rec2);
+    new_player!(game_sender, "pl_c".to_string(), pl3, rec3);
+    new_player!(game_sender, "pl_d".to_string(), pl4, rec4);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::CreateRoom {
+                name: "room".to_string(),
+            },
+        })
+        .await?;
+    let room = rec1.next().await;
+    let room = em!(room.unwrap() => get Response::RoomCreated).expect("Can't get room id");
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec2);
+    game_sender
+        .send(In::PlayerAction {
+            player: pl3,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec3);
+    game_sender
+        .send(In::PlayerAction {
+            player: pl4,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec4);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl3,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl4,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    receive!(rec1);
+    receive!(rec2);
+    receive!(rec3);
+    receive!(rec4);
+
+    let (pl, mut rec) = select! {
+        a_res = rec1.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+                (pl1, rec1)
+            } else {
+                panic!("No turn started")
+            }
+        },
+        b_res = rec2.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+                (pl2, rec2)
+            } else {
+                panic!("No turn started")
+            }
+        },
+        c_res = rec3.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = c_res.unwrap() {
+                (pl3, rec3)
+            } else {
+                panic!("No turn started")
+            }
+        },
+        d_res = rec4.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = d_res.unwrap() {
+                (pl4, rec4)
+            } else {
+                panic!("No turn started")
+            }
+        },
+    };
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl,
+            action: Action::Game(GameAction::Move(1, 2)),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl,
+            action: Action::Game(GameAction::Attack(1, 1)),
+        })
+        .await?;
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Attack[]),
+        "No attack boardcast"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    let winner = em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
+    drop(game_sender);
+    let game = game_handle.await;
+
+    let p = game.players.get(&pl).unwrap();
+    let name = p.name.clone();
+    assert_eq!(
+        p.ingame.as_ref().expect("player not have ingame").position,
+        (1, 2)
+    );
+
+    let room = game.rooms.get(&room).expect("room not exists");
+
+    assert_eq!(room.is_gamming(), false);
+    assert_eq!(room.order.len(), 1);
+    assert_eq!(room.winner(), Some(pl));
+    assert_eq!(winner, name);
+
+    Ok(())
+}
+
+#[async_std::test]
+async fn test_once_kill_all_include_self() -> Result<()> {
+    setup!(game_sender, game_handle);
+    new_player!(game_sender, "pl_a".to_string(), pl1, rec1);
+    new_player!(game_sender, "pl_b".to_string(), pl2, rec2);
+    new_player!(game_sender, "pl_c".to_string(), pl3, rec3);
+    new_player!(game_sender, "pl_d".to_string(), pl4, rec4);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::CreateRoom {
+                name: "room".to_string(),
+            },
+        })
+        .await?;
+    let room = rec1.next().await;
+    let room = em!(room.unwrap() => get Response::RoomCreated).expect("Can't get room id");
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec2);
+    game_sender
+        .send(In::PlayerAction {
+            player: pl3,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec3);
+    game_sender
+        .send(In::PlayerAction {
+            player: pl4,
+            action: Action::JoinRoom { id: room },
+        })
+        .await?;
+    receive!(rec4);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl2,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl3,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    game_sender
+        .send(In::PlayerAction {
+            player: pl4,
+            action: Action::Ready(1, 1),
+        })
+        .await?;
+    receive!(rec1);
+    receive!(rec2);
+    receive!(rec3);
+    receive!(rec4);
+
+    let (pl, mut rec, name) = select! {
+        a_res = rec1.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+                (pl1, rec1, "pl_a")
+            } else {
+                panic!("No turn started")
+            }
+        },
+        b_res = rec2.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+                (pl2, rec2, "pl_b")
+            } else {
+                panic!("No turn started")
+            }
+        },
+        c_res = rec3.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = c_res.unwrap() {
+                (pl3, rec3, "pl_c")
+            } else {
+                panic!("No turn started")
+            }
+        },
+        d_res = rec4.next().fuse() => {
+            if let Response::Game(Event::TurnStart) = d_res.unwrap() {
+                (pl4, rec4, "pl_d")
+            } else {
+                panic!("No turn started")
+            }
+        },
+    };
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl,
+            action: Action::Game(GameAction::Attack(1, 1)),
+        })
+        .await?;
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Attack[]),
+        "No attack boardcast"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        "Player didn't died"
+    );
+    assert_eq!(
+        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::Die)
+            .expect("Self didn't died"),
+        name
+    );
+    let winner = em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
+    drop(game_sender);
+    let game = game_handle.await;
+
+    let p = game.players.get(&pl).unwrap();
+    let pname = p.name.clone();
+
+    let room = game.rooms.get(&room).expect("room not exists");
+
+    assert_eq!(room.is_gamming(), false);
+    assert_eq!(room.order.len(), 1);
+    assert_eq!(room.winner(), Some(pl));
+    assert_eq!(winner, name);
+    assert_eq!(winner, pname);
 
     Ok(())
 }
