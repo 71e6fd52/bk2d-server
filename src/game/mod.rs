@@ -168,7 +168,7 @@ macro_rules! send_or_delete {
     ($s:ident, $player:expr, $res:expr) => {
         if !$player.send($res).await {
             let id = $player.id;
-            $s.remove_player(id);
+            $s.remove_player(id).await;
         }
     };
 }
@@ -192,7 +192,7 @@ impl Game {
                     // TODO: check exists
                     let id = self.insert_player(name, sender);
                     if let Err(id) = id_sender.send(id) {
-                        self.remove_player(id);
+                        self.remove_player(id).await;
                     }
                 }
                 PlayerAction { player, action } => self.perform_action(player, action).await,
@@ -225,17 +225,31 @@ impl Game {
         }
     }
 
-    fn remove_player(&mut self, id: u64) -> bool {
+    async fn remove_player(&mut self, id: u64) -> bool {
         let entry = match self.players.entry(id) {
             Entry::Occupied(entry) => entry.remove(),
             Entry::Vacant(_) => return false,
         };
         if let Some(room) = entry.room {
-            self.rooms.entry(room).and_modify(|r| {
-                r.players.remove(&id); // TODO: remove empty room
-                                       // TODO: remove in order
-            });
-            // TODO: notify other player
+            if let Entry::Occupied(mut o) = self.rooms.entry(room) {
+                let r = o.get_mut();
+                r.players.remove(&id);
+
+                if r.players.is_empty() {
+                    o.remove();
+                    return true;
+                }
+
+                if let Some(index) = r.order.iter().position(|&x| x == id) {
+                    r.order.remove(index);
+                }
+
+                r.boardcast(
+                    Response::Game(Event::Disconnected(entry.name.clone())),
+                    &mut self.players,
+                )
+                .await
+            }
         }
         true
     }
@@ -275,7 +289,7 @@ impl Game {
             }
         }
         for i in to_delete {
-            self.remove_player(i);
+            self.remove_player(i).await;
         }
         let room = self.rooms.get_mut(&room_id).unwrap();
         room.start();
@@ -298,7 +312,7 @@ impl Game {
                 let player = self.players.get_mut(&player_id).unwrap();
                 player.room = Some(id);
                 if !player.send(Response::RoomCreated(id)).await {
-                    self.remove_player(player_id);
+                    self.remove_player(player_id).await;
                 }
             }
             JoinRoom { id } => {
@@ -311,7 +325,7 @@ impl Game {
                 }
                 player.room = Some(id);
                 if !player.send(Response::RoomJoined).await {
-                    self.remove_player(player_id);
+                    self.remove_player(player_id).await;
                 }
             }
             Ready(x, y) => {
@@ -357,7 +371,7 @@ impl Game {
             }
         } else {
             if !player.send(Response::Error(Error::NotJoinRoom)).await {
-                self.remove_player(player_id);
+                self.remove_player(player_id).await;
             }
             return;
         };
