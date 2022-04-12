@@ -245,7 +245,7 @@ impl Game {
                 }
 
                 r.boardcast(
-                    Response::Game(Event::Disconnected(entry.name.clone())),
+                    Response::Event(Event::Disconnected(entry.name.clone())),
                     &mut self.players,
                 )
                 .await
@@ -296,7 +296,7 @@ impl Game {
         send_or_delete!(
             self,
             self.players.get_mut(&room.currect_player_id()).unwrap(),
-            Response::Game(Event::TurnStart)
+            Response::Event(Event::TurnStart)
         );
     }
 
@@ -333,7 +333,7 @@ impl Game {
                 let room = if let Some(id) = player.room {
                     id
                 } else {
-                    send_or_delete!(self, player, Response::Error(Error::NotJoinRoom));
+                    send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
                     return;
                 };
                 player.ingame = Some(IngameProp {
@@ -352,8 +352,51 @@ impl Game {
                     self.rooms
                         .get_mut(&room)
                         .unwrap()
-                        .boardcast(Response::Game(Event::GameEnd(name)), &mut self.players)
+                        .boardcast(Response::Event(Event::GameEnd(name)), &mut self.players)
                         .await;
+                }
+            }
+            RequestData(ty) => {
+                use SyncType::*;
+
+                let player = self.players.get_mut(&player_id).unwrap();
+
+                let ingame = if let Some(ingame) = player.ingame.clone() {
+                    ingame
+                } else {
+                    send_or_delete!(self, player, Response::Error(Error::NotInGame));
+                    return;
+                };
+                match ty {
+                    Player => {
+                        send_or_delete!(
+                            self,
+                            player,
+                            Response::Sync(ToSync::Player {
+                                name: player.name.clone(),
+                                id: player.id,
+                                position: ingame.position
+                            })
+                        );
+                    }
+                    PlayersOrder => {
+                        let room = if let Some(id) = player.room {
+                            self.rooms.get(&id).unwrap()
+                        } else {
+                            send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
+                            return;
+                        };
+                        let res = room
+                            .order
+                            .iter()
+                            .map(|id| self.players.get(id).unwrap().name.clone())
+                            .collect();
+                        send_or_delete!(
+                            self,
+                            self.players.get_mut(&player_id).unwrap(),
+                            Response::Sync(ToSync::PlayersOrder(res))
+                        );
+                    }
                 }
             }
         }
@@ -370,7 +413,7 @@ impl Game {
                 return;
             }
         } else {
-            if !player.send(Response::Error(Error::NotJoinRoom)).await {
+            if !player.send(Response::Error(Error::NotJoinedRoom)).await {
                 self.remove_player(player_id).await;
             }
             return;
@@ -403,7 +446,7 @@ impl Game {
                     return;
                 }
                 player.ingame_mut().stage = 2;
-                room.boardcast(Response::Game(Event::Attack(x, y)), &mut self.players)
+                room.boardcast(Response::Event(Event::Attack(x, y)), &mut self.players)
                     .await;
                 let mut to_kill = vec![];
                 room.order.rotate_left(1);
@@ -411,7 +454,7 @@ impl Game {
                     let player = self.players.get_mut(pl).unwrap();
                     if player.ingame().position == (x, y) {
                         room.boardcast(
-                            Response::Game(Event::Die(player.name.clone())),
+                            Response::Event(Event::Die(player.name.clone())),
                             &mut self.players,
                         )
                         .await;
@@ -433,7 +476,7 @@ impl Game {
                 let (oldx, oldy) = player.ingame().position;
                 player.ingame_mut().position = (x, y);
                 player.ingame_mut().stage = 1;
-                room.boardcast(Response::Game(Event::Run(oldx, oldy)), &mut self.players)
+                room.boardcast(Response::Event(Event::Run(oldx, oldy)), &mut self.players)
                     .await;
             }
             End => {
@@ -441,7 +484,7 @@ impl Game {
                 send_or_delete!(
                     self,
                     self.players.get_mut(&room.push_player()).unwrap(),
-                    Response::Game(Event::TurnStart)
+                    Response::Event(Event::TurnStart)
                 );
             }
         }

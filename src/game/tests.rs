@@ -371,14 +371,14 @@ async fn start_game() -> Result<(
 
     let swap = select! {
         a_res = rec1.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = a_res.unwrap() {
                 false
             } else {
                 panic!("No turn started")
             }
         },
         b_res = rec2.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = b_res.unwrap() {
                 true
             } else {
                 panic!("No turn started")
@@ -448,14 +448,14 @@ async fn test_a_full_game() -> Result<()> {
 
     let swap = select! {
         a_res = rec1.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = a_res.unwrap() {
                 false
             } else {
                 panic!("No turn started")
             }
         },
         b_res = rec2.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = b_res.unwrap() {
                 true
             } else {
                 panic!("No turn started")
@@ -475,13 +475,13 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     assert_eq!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => get Event::Attack[x, y])
         .expect("No Attack boardcast"),
         (1, 2),
         "Attack location wrong"
     );
     assert_eq!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => get Event::Attack[x, y])
         .expect("No Attack boardcast"),
         (1, 2),
         "Attack location wrong"
@@ -494,7 +494,7 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     assert!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::TurnStart|),
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => is Event::TurnStart|),
         "pl2 turn not start"
     );
 
@@ -505,13 +505,13 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     assert_eq!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => get Event::Run[x, y])
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => get Event::Run[x, y])
         .expect("No Run boardcast"),
         (1, 1),
         "Run location wrong"
     );
     assert_eq!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => get Event::Run[x, y])
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => get Event::Run[x, y])
         .expect("No Run boardcast"),
         (1, 1),
         "Run location wrong"
@@ -523,7 +523,7 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     assert!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::TurnStart|),
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => is Event::TurnStart|),
         "pl1 turn not start"
     );
     game_sender
@@ -542,31 +542,31 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     assert_eq!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => get Event::Attack[x, y])
         .expect("No Attack boardcast"),
         (2, 2),
         "Attack location wrong"
     );
     assert_eq!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => get Event::Attack[x, y])
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => get Event::Attack[x, y])
         .expect("No Attack boardcast"),
         (2, 2),
         "Attack location wrong"
     );
     assert!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec1) => get Response::Game).expect("Not game respond") => is Event::GameEnd),
+        em!(em!(receive!(rec1) => get Response::Event).expect("Not game respond") => is Event::GameEnd),
         "Game didn't ended"
     );
     assert!(
-        em!(em!(receive!(rec2) => get Response::Game).expect("Not game respond") => is Event::GameEnd),
+        em!(em!(receive!(rec2) => get Response::Event).expect("Not game respond") => is Event::GameEnd),
         "Game didn't ended"
     );
 
@@ -729,28 +729,28 @@ async fn test_once_kill_all() -> Result<()> {
 
     let (pl, mut rec) = select! {
         a_res = rec1.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = a_res.unwrap() {
                 (pl1, rec1)
             } else {
                 panic!("No turn started")
             }
         },
         b_res = rec2.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = b_res.unwrap() {
                 (pl2, rec2)
             } else {
                 panic!("No turn started")
             }
         },
         c_res = rec3.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = c_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = c_res.unwrap() {
                 (pl3, rec3)
             } else {
                 panic!("No turn started")
             }
         },
         d_res = rec4.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = d_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = d_res.unwrap() {
                 (pl4, rec4)
             } else {
                 panic!("No turn started")
@@ -771,22 +771,22 @@ async fn test_once_kill_all() -> Result<()> {
         })
         .await?;
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Attack[]),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Attack[]),
         "No attack boardcast"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
-    let winner = em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
+    let winner = em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
     drop(game_sender);
     let game = game_handle.await;
 
@@ -879,28 +879,28 @@ async fn test_once_kill_all_include_self() -> Result<()> {
 
     let (pl, mut rec, name) = select! {
         a_res = rec1.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = a_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = a_res.unwrap() {
                 (pl1, rec1, "pl_a")
             } else {
                 panic!("No turn started")
             }
         },
         b_res = rec2.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = b_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = b_res.unwrap() {
                 (pl2, rec2, "pl_b")
             } else {
                 panic!("No turn started")
             }
         },
         c_res = rec3.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = c_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = c_res.unwrap() {
                 (pl3, rec3, "pl_c")
             } else {
                 panic!("No turn started")
             }
         },
         d_res = rec4.next().fuse() => {
-            if let Response::Game(Event::TurnStart) = d_res.unwrap() {
+            if let Response::Event(Event::TurnStart) = d_res.unwrap() {
                 (pl4, rec4, "pl_d")
             } else {
                 panic!("No turn started")
@@ -915,27 +915,27 @@ async fn test_once_kill_all_include_self() -> Result<()> {
         })
         .await?;
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Attack[]),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Attack[]),
         "No attack boardcast"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => is Event::Die),
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => is Event::Die),
         "Player didn't died"
     );
     assert_eq!(
-        em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::Die)
+        em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => get Event::Die)
             .expect("Self didn't died"),
         name
     );
-    let winner = em!(em!(receive!(rec) => get Response::Game).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
+    let winner = em!(em!(receive!(rec) => get Response::Event).expect("Not game respond") => get Event::GameEnd).expect("Game didn't ended");
     drop(game_sender);
     let game = game_handle.await;
 
@@ -950,5 +950,60 @@ async fn test_once_kill_all_include_self() -> Result<()> {
     assert_eq!(winner, name);
     assert_eq!(winner, pname);
 
+    Ok(())
+}
+
+#[async_std::test]
+async fn test_sync_data() -> Result<()> {
+    use SyncType::*;
+
+    let (mut game_sender, game_handle, ((pl1, mut rec1), (pl2, mut rec2))) = start_game().await?;
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Game(GameAction::Move(1, 2)),
+        })
+        .await?;
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::Game(GameAction::End),
+        })
+        .await?;
+    receive!(rec2);
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::RequestData(Player),
+        })
+        .await?;
+    let result = em!(receive!(rec1) => get Response::Sync).expect("not Sync");
+    let (name, id, (x, y)) =
+        em!(result => get ToSync::Player{name, id, position}).expect("not Sync Player");
+
+    game_sender
+        .send(In::PlayerAction {
+            player: pl1,
+            action: Action::RequestData(PlayersOrder),
+        })
+        .await?;
+    let result = em!(receive!(rec1) => get Response::Sync).expect("not Sync");
+    let players = em!(result => get ToSync::PlayersOrder).expect("not Sync Player");
+
+    drop(game_sender);
+    let game = game_handle.await;
+
+    let p1 = game.players.get(&pl1).unwrap();
+    let p2 = game.players.get(&pl2).unwrap();
+
+    assert_eq!(p1.id, id);
+    assert_eq!(p1.name, name);
+    assert_eq!(x, 1);
+    assert_eq!(y, 2);
+    assert_eq!(players[0], p2.name);
+    assert_eq!(players[1], p1.name);
     Ok(())
 }

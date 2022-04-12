@@ -49,6 +49,7 @@ pub enum Action {
     JoinRoom { id: u64 },
     Ready(u8, u8),
     Game(GameAction),
+    RequestData(SyncType),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -67,7 +68,8 @@ pub enum Response {
     RoomCreated(u64),
     RoomJoined,
     GameStarted,
-    Game(Event),
+    Event(Event),
+    Sync(ToSync),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,12 +83,31 @@ pub enum Event {
     GameEnd(String),
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SyncType {
+    Player,
+    PlayersOrder,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToSync {
+    Player {
+        name: String,
+        id: u64,
+        position: (u8, u8),
+    },
+    PlayersOrder(Vec<String>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "error_id", content = "error_detail")]
 #[serde(rename_all = "snake_case")]
 pub enum Error {
     RoomNotFound,
-    NotJoinRoom,
+    NotJoinedRoom,
+    NotInGame,
     NotYourTurn,
     ActionOrderIncorrect,
     IllegalParameter,

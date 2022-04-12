@@ -137,19 +137,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 
 [[package]]
-name = "bk2d"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "enum_macro",
- "futures",
- "rand",
- "serde",
- "serde-lexpr",
-]
-
-[[package]]
 name = "blocking"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -214,6 +201,19 @@ checksum = "ccc0a48a9b826acdf4028595adc9db92caea352f7af011a3034acd172a52a0aa"
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "doibak-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "enum_macro",
+ "futures",
+ "rand",
+ "serde",
+ "serde-lexpr",
 ]
 
 [[package]]
