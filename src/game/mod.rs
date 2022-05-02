@@ -65,20 +65,23 @@ pub struct IngameProp {
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomExport {
+    pub name: String,
     pub order: VecDeque<u64>,
     pub players: HashSet<u64>,
 }
 
 #[derive(Debug)]
 pub struct Room {
+    pub name: String,
     pub order: VecDeque<u64>,
     pub players: HashSet<u64>,
     rng: SmallRng,
 }
 
 impl Room {
-    pub fn new() -> Self {
+    pub fn new(name: String) -> Self {
         Room {
+            name,
             order: VecDeque::new(),
             players: HashSet::new(),
             rng: SmallRng::from_entropy(),
@@ -138,17 +141,18 @@ impl Room {
     #[cfg(test)]
     pub fn export(&self) -> RoomExport {
         RoomExport {
+            name: self.name.clone(),
             order: self.order.clone(),
             players: self.players.clone(),
         }
     }
 }
 
-impl Default for Room {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for Room {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -254,13 +258,13 @@ impl Game {
         true
     }
 
-    fn insert_room(&mut self, _name: String) -> u64 {
+    fn insert_room(&mut self, name: String) -> u64 {
         loop {
             let id = self.id_rng.next_u64();
             match self.rooms.entry(id) {
                 Entry::Occupied(_) => continue,
                 Entry::Vacant(entry) => {
-                    entry.insert(Room::new());
+                    entry.insert(Room::new(name));
                     return id;
                 }
             }
@@ -398,6 +402,16 @@ impl Game {
                         );
                     }
                 }
+            }
+            GetRoomList => {
+                let player = self.players.get_mut(&player_id).unwrap();
+
+                let res = self
+                    .rooms
+                    .iter()
+                    .map(|(&k, v)| (k, v.name.clone()))
+                    .collect();
+                send_or_delete!(self, player, Response::RoomList(res));
             }
         }
     }

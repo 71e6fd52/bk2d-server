@@ -50,6 +50,7 @@ pub enum Action {
     Ready(u8, u8),
     Game(GameAction),
     RequestData(SyncType),
+    GetRoomList,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -70,6 +71,7 @@ pub enum Response {
     GameStarted,
     Event(Event),
     Sync(ToSync),
+    RoomList(Vec<(u64, String)>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
