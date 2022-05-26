@@ -328,7 +328,7 @@ impl Game {
                     return;
                 }
                 player.room = Some(id);
-                if !player.send(Response::RoomJoined).await {
+                if !player.send(Response::RoomJoined(id)).await {
                     self.remove_player(player_id).await;
                 }
             }

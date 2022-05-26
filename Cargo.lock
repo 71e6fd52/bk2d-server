@@ -209,11 +209,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-std",
+ "doibak_types",
  "enum_macro",
  "futures",
  "rand",
  "serde",
  "serde-lexpr",
+]
+
+[[package]]
+name = "doibak_types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

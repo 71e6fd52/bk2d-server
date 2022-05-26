@@ -5,6 +5,8 @@ use async_std::{
     sync::Arc,
 };
 
+use doibak_types::*;
+
 pub mod game;
 pub mod utils;
 use utils::*;

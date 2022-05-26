@@ -184,7 +184,7 @@ async fn test_join_room() -> Result<()> {
         })
         .await?;
     let res = response_receiver2.next().await;
-    if !em!(res.unwrap() => is Response::RoomJoined|) {
+    if !em!(res.unwrap() => is Response::RoomJoined) {
         panic!("Can't join room")
     };
 
@@ -242,7 +242,7 @@ async fn test_start_game() -> Result<()> {
         })
         .await?;
     let res = response_receiver2.next().await;
-    if !em!(res.unwrap() => is Response::RoomJoined|) {
+    if !em!(res.unwrap() => is Response::RoomJoined) {
         panic!("Can't join room")
     };
 
@@ -344,7 +344,7 @@ async fn start_game() -> Result<(
         })
         .await?;
     let res = rec2.next().await;
-    if !em!(res.unwrap() => is Response::RoomJoined|) {
+    if !em!(res.unwrap() => is Response::RoomJoined) {
         panic!("Can't join room")
     };
 
@@ -421,7 +421,7 @@ async fn test_a_full_game() -> Result<()> {
         })
         .await?;
     let res = rec2.next().await;
-    if !em!(res.unwrap() => is Response::RoomJoined|) {
+    if !em!(res.unwrap() => is Response::RoomJoined) {
         panic!("Can't join room")
     };
 
