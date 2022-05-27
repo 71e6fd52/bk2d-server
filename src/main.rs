@@ -39,14 +39,22 @@ async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> 
     let (mut response_sender, response_receiver) = mpsc::unbounded();
     spawn_and_log_error(connection_writer_loop(response_receiver, stream.clone()));
 
-    let player = match lines.next().await {
+    let handshake = match lines.next().await {
         None => bail!("peer disconnected immediately"),
         Some(line) => line?,
     };
+    let handshake: HandshakeUp = serde_lexpr::from_str(&handshake)?;
     let (id_sender, id_receiver) = oneshot::channel();
-    game.send(NewPlayer(player, response_sender.clone(), id_sender))
-        .await?;
+    game.send(NewPlayer(
+        handshake.name,
+        response_sender.clone(),
+        id_sender,
+    ))
+    .await?;
     let player = id_receiver.await?;
+    (&*stream)
+        .write_all((serde_lexpr::to_string(&HandshakeDown { id: player })? + "\n").as_bytes())
+        .await?;
 
     while let Some(line) = lines.next().await {
         let line = line?;

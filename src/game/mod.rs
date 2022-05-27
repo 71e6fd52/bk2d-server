@@ -19,6 +19,7 @@ pub struct Player {
 impl Player {
     pub async fn send(&mut self, res: Response) -> bool {
         if let Err(e) = self.sender.send(res).await {
+            // TODO check error type
             eprintln!("{}", e); // TODO: use log
             false
         } else {
@@ -249,7 +250,7 @@ impl Game {
                 }
 
                 r.boardcast(
-                    Response::Event(Event::Disconnected(entry.name.clone())),
+                    Response::Event(Event::Disconnected, entry.id),
                     &mut self.players,
                 )
                 .await
@@ -297,10 +298,33 @@ impl Game {
         }
         let room = self.rooms.get_mut(&room_id).unwrap();
         room.start();
+        // room.boardcast(
+        //     Response::Data(Data::PlayersOrder(room.order.clone().into())),
+        //     &mut self.players,
+        // )
+        // .await;
+
+        for id in room.players.clone() {
+            self.send_data(id, DataType::Player).await;
+            self.send_data(id, DataType::PlayersOrder).await;
+            self.send_data(id, DataType::PlayersName).await;
+        }
+        // let res = self
+        //     .rooms
+        //     .get(&room_id)
+        //     .unwrap()
+        //     .players
+        //     .iter()
+        //     .map(|id| (*id, self.players.get(id).unwrap().name.clone()))
+        //     .collect();
+        let room = self.rooms.get_mut(&room_id).unwrap();
+        // room.boardcast(Response::Data(Data::PlayersName(res)), &mut self.players)
+        //     .await;
+
         send_or_delete!(
             self,
             self.players.get_mut(&room.currect_player_id()).unwrap(),
-            Response::Event(Event::TurnStart)
+            Response::Event(Event::TurnStart, room.currect_player_id())
         );
     }
 
@@ -328,9 +352,17 @@ impl Game {
                     return;
                 }
                 player.room = Some(id);
-                if !player.send(Response::RoomJoined(id)).await {
-                    self.remove_player(player_id).await;
-                }
+                let name = player.name.clone();
+                send_or_delete!(self, player, Response::RoomJoined(id));
+                self.rooms
+                    .get_mut(&id)
+                    .unwrap()
+                    .boardcast(
+                        Response::Event(Event::NewPlayer(name), player_id),
+                        &mut self.players,
+                    )
+                    .await;
+                self.send_data(player_id, DataType::PlayersName).await;
             }
             Ready(x, y) => {
                 let player = self.players.get_mut(&player_id).unwrap();
@@ -352,66 +384,15 @@ impl Game {
 
                 let room = self.players.get(&player_id).unwrap().room.unwrap();
                 if let Some(pl) = self.rooms.get(&room).unwrap().winner() {
-                    let name = self.players.get(&pl).unwrap().name.clone();
                     self.rooms
                         .get_mut(&room)
                         .unwrap()
-                        .boardcast(Response::Event(Event::GameEnd(name)), &mut self.players)
+                        .boardcast(Response::Event(Event::GameEnd, pl), &mut self.players)
                         .await;
                 }
             }
             RequestData(ty) => {
-                use SyncType::*;
-
-                let player = self.players.get_mut(&player_id).unwrap();
-
-                let ingame = if let Some(ingame) = player.ingame.clone() {
-                    ingame
-                } else {
-                    send_or_delete!(self, player, Response::Error(Error::NotInGame));
-                    return;
-                };
-                match ty {
-                    Player => {
-                        send_or_delete!(
-                            self,
-                            player,
-                            Response::Sync(ToSync::Player {
-                                name: player.name.clone(),
-                                id: player.id,
-                                position: ingame.position
-                            })
-                        );
-                    }
-                    PlayersOrder => {
-                        let room = if let Some(id) = player.room {
-                            self.rooms.get(&id).unwrap()
-                        } else {
-                            send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
-                            return;
-                        };
-                        let res = room
-                            .order
-                            .iter()
-                            .map(|id| self.players.get(id).unwrap().name.clone())
-                            .collect();
-                        send_or_delete!(
-                            self,
-                            self.players.get_mut(&player_id).unwrap(),
-                            Response::Sync(ToSync::PlayersOrder(res))
-                        );
-                    }
-                }
-            }
-            GetRoomList => {
-                let player = self.players.get_mut(&player_id).unwrap();
-
-                let res = self
-                    .rooms
-                    .iter()
-                    .map(|(&k, v)| (k, v.name.clone()))
-                    .collect();
-                send_or_delete!(self, player, Response::RoomList(res));
+                self.send_data(player_id, ty).await;
             }
         }
     }
@@ -460,18 +441,18 @@ impl Game {
                     return;
                 }
                 player.ingame_mut().stage = 2;
-                room.boardcast(Response::Event(Event::Attack(x, y)), &mut self.players)
-                    .await;
+                room.boardcast(
+                    Response::Event(Event::Attack(x, y), player_id),
+                    &mut self.players,
+                )
+                .await;
                 let mut to_kill = vec![];
                 room.order.rotate_left(1);
                 for pl in &room.order {
                     let player = self.players.get_mut(pl).unwrap();
                     if player.ingame().position == (x, y) {
-                        room.boardcast(
-                            Response::Event(Event::Die(player.name.clone())),
-                            &mut self.players,
-                        )
-                        .await;
+                        room.boardcast(Response::Event(Event::Die, *pl), &mut self.players)
+                            .await;
                         to_kill.push(*pl);
                     }
                 }
@@ -490,16 +471,93 @@ impl Game {
                 let (oldx, oldy) = player.ingame().position;
                 player.ingame_mut().position = (x, y);
                 player.ingame_mut().stage = 1;
-                room.boardcast(Response::Event(Event::Run(oldx, oldy)), &mut self.players)
-                    .await;
+                room.boardcast(
+                    Response::Event(Event::Run(oldx, oldy), player_id),
+                    &mut self.players,
+                )
+                .await;
             }
             End => {
                 player.ingame_mut().stage = 0;
+                let pl = room.push_player();
+                room.boardcast(
+                    Response::Data(Data::PlayersOrder(room.order.clone().into())),
+                    &mut self.players,
+                )
+                .await;
                 send_or_delete!(
                     self,
-                    self.players.get_mut(&room.push_player()).unwrap(),
-                    Response::Event(Event::TurnStart)
+                    self.players.get_mut(&pl).unwrap(),
+                    Response::Event(Event::TurnStart, pl)
                 );
+            }
+        }
+    }
+
+    async fn send_data(&mut self, player_id: u64, ty: DataType) {
+        use DataType::*;
+
+        let player = self.players.get_mut(&player_id).unwrap();
+
+        match ty {
+            Player => {
+                let ingame = if let Some(ingame) = player.ingame.clone() {
+                    ingame
+                } else {
+                    send_or_delete!(self, player, Response::Error(Error::NotInGame));
+                    return;
+                };
+                send_or_delete!(
+                    self,
+                    player,
+                    Response::Data(Data::Player {
+                        name: player.name.clone(),
+                        id: player.id,
+                        position: ingame.position
+                    })
+                );
+            }
+            PlayersOrder => {
+                let room = if let Some(id) = player.room {
+                    self.rooms.get(&id).unwrap()
+                } else {
+                    send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
+                    return;
+                };
+                let res = room.order.clone().into();
+                send_or_delete!(
+                    self,
+                    self.players.get_mut(&player_id).unwrap(),
+                    Response::Data(Data::PlayersOrder(res))
+                );
+            }
+            PlayersName => {
+                let room = if let Some(id) = player.room {
+                    self.rooms.get(&id).unwrap()
+                } else {
+                    send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
+                    return;
+                };
+                let res = room
+                    .players
+                    .iter()
+                    .map(|id| (*id, self.players.get(id).unwrap().name.clone()))
+                    .collect();
+                send_or_delete!(
+                    self,
+                    self.players.get_mut(&player_id).unwrap(),
+                    Response::Data(Data::PlayersName(res))
+                );
+            }
+            RoomList => {
+                let player = self.players.get_mut(&player_id).unwrap();
+
+                let res = self
+                    .rooms
+                    .iter()
+                    .map(|(&k, v)| (k, v.name.clone()))
+                    .collect();
+                send_or_delete!(self, player, Response::Data(Data::RoomList(res)));
             }
         }
     }
