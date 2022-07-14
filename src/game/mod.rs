@@ -201,6 +201,9 @@ impl Game {
                     }
                 }
                 PlayerAction { player, action } => self.perform_action(player, action).await,
+                Disconnected(id) => {
+                    self.remove_player(id).await;
+                }
                 #[cfg(test)]
                 Export(sender) => {
                     sender.send(self.export()).ok();
@@ -277,6 +280,9 @@ impl Game {
         if room.is_gamming() {
             return;
         }
+        if room.players.len() == 1 {
+            return;
+        }
         for i in room.players.clone() {
             if let Some(player) = self.players.get(&i) {
                 if !player.ready {
@@ -341,7 +347,10 @@ impl Game {
                 player.room = Some(id);
                 if !player.send(Response::RoomCreated(id)).await {
                     self.remove_player(player_id).await;
+                    return;
                 }
+                self.send_data(player_id, DataType::PlayersName).await;
+                self.send_data(player_id, DataType::PlayersOrder).await;
             }
             JoinRoom { id } => {
                 let player = self.players.get_mut(&player_id).unwrap();
@@ -363,6 +372,7 @@ impl Game {
                     )
                     .await;
                 self.send_data(player_id, DataType::PlayersName).await;
+                self.send_data(player_id, DataType::PlayersOrder).await;
             }
             Ready(x, y) => {
                 let player = self.players.get_mut(&player_id).unwrap();
@@ -524,7 +534,12 @@ impl Game {
                     send_or_delete!(self, player, Response::Error(Error::NotJoinedRoom));
                     return;
                 };
-                let res = room.order.clone().into();
+                let res = if room.order.is_empty() {
+                    room.players.iter().map(u64::to_owned).collect()
+                } else {
+                    room.order.clone().into()
+                };
+
                 send_or_delete!(
                     self,
                     self.players.get_mut(&player_id).unwrap(),

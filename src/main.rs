@@ -73,6 +73,7 @@ async fn connection_loop(mut game: Sender<In>, stream: TcpStream) -> Result<()> 
             }
         }
     }
+    game.send(Disconnected(player)).await?;
     Ok(())
 }
 

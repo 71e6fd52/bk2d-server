@@ -38,6 +38,7 @@ pub enum In {
         player: u64,
         action: Action,
     },
+    Disconnected(u64),
     #[cfg(test)]
     Export(oneshot::Sender<crate::game::GameExport>),
 }
