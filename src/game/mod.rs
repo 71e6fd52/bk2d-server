@@ -256,7 +256,12 @@ impl Game {
                     Response::Event(Event::Disconnected, entry.id),
                     &mut self.players,
                 )
-                .await
+                .await;
+
+                if let Some(pl) = r.winner() {
+                    r.boardcast(Response::Event(Event::GameEnd, pl), &mut self.players)
+                        .await;
+                }
             }
         }
         true
